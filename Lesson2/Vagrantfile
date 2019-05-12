@@ -1,0 +1,130 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+home = ENV['HOME']
+
+MACHINE = {
+  :otus_linux => {
+    :box_name => "centos/7",
+    :ram => "2048",
+    :cpu => "4",
+    :ip_addr => '192.168.50.15',
+    :disks => {
+      :sata1 => {
+        :dfile => home + '/VirtualBox VMs/disks/sata1.vdi',
+        :size => 250,
+        :port => 1
+      },
+      :sata2 => {
+        :dfile => home + '/VirtualBox VMs/disks/sata2.vdi',
+        :size => 250,
+        :port => 2
+      },
+      :sata3 => {
+        :dfile => home + '/VirtualBox VMs/disks/sata3.vdi',
+        :size => 300,
+        :port => 3
+      },
+      :sata4 => {
+        :dfile => home + '/VirtualBox VMs/disks/sata4.vdi',
+        :size => 300,
+        :port => 4
+      },
+      :sata5 => {
+        :dfile => home + '/VirtualBox VMs/disks/sata5.vdi',
+        :size => 300,
+        :port => 5
+      }
+    }
+  },
+}
+
+Vagrant.configure("2") do |config|
+
+  MACHINE.each do |boxname, boxconfig|
+   
+    config.vm.define boxname do |box|
+      box.vm.box = "centos/7"
+     
+      box.vm.network "private_network", ip: boxconfig[:ip_addr]
+     
+      box.vm.provider "virtualbox" do |vb|
+        vb.memory = boxconfig[:ram]
+        vb.cpus = boxconfig[:cpu]
+        needsController = false
+        boxconfig[:disks].each do |dname, dconf|
+          unless File.exist?(dconf[:dfile])
+            vb.customize ['createhd', '--filename', dconf[:dfile], '--variant', 'Fixed','--size',dconf[:size]]
+            needsController = true
+          end
+        end
+        if needsController == true
+          vb.customize ["storagectl", :id, "--name", "SATA", "--add", "sata"]
+          boxconfig[:disks].each do |dname, dconf|
+            vb.customize ['storageattach', :id, '--storagectl', 'SATA', '--port', dconf[:port], '--device', 0, '--type', 'hdd', '--medium', dconf[:dfile]]
+          end
+        end
+      end
+   box.vm.provision "shell", inline: <<-SHELL
+     hostnamectl set-hostname lesson-2 
+     yum install -y mdadm fio dosfstools
+
+     mdadm -C /dev/md0 -l 0 -n 2 /dev/sdb /dev/sdc
+     mdadm -C /dev/md5 -l 5 -n 3 /dev/sdd /dev/sde /dev/sdf
+
+     fio /vagrant/md0 > /home/vagrant/md0.log
+     sed -i 's/md10/md5/g' /vagrant/md0 && fio /vagrant/md0 > /home/vagrant/md5.log
+
+     echo "DEVICE partitions" > /etc/mdadm.conf && mdadm --detail --scan --verbose | awk '/ARRAY/ {print}' >> /etc/mdadm.conf
+
+     while [[ "`cat /proc/mdstat  | grep -A2 "md5" | tail -n1`" == *"recovery"* ]]; do echo "" > /dev/null; done
+     echo START $(date +%H:%M:%S) > /home/vagrant/md5-destroy.log && cat /proc/mdstat  | grep -A2 "md5" >> /home/vagrant/md5-destroy.log
+     mdadm /dev/md5 --fail /dev/sdf && sleep 2 && echo FAIL $(date +%H:%M:%S) >> /home/vagrant/md5-destroy.log && cat /proc/mdstat  | grep -A2 "md5" >> /home/vagrant/md5-destroy.log
+     mdadm /dev/md5 --remove /dev/sdf && sleep 2 && echo REMOVE $(date +%H:%M:%S) >> /home/vagrant/md5-destroy.log && cat /proc/mdstat  | grep -A2 "md5" >> /home/vagrant/md5-destroy.log
+     mdadm /dev/md5 --add /dev/sdf && sleep 2
+     i=0 && while [[ "`cat /proc/mdstat  | grep -A2 "md5" | tail -n1`" == *"recovery"* ]]; do echo rebuild $i $(date +%H:%M:%S) >> /home/vagrant/md5-destroy.log && cat /proc/mdstat  | grep -A2 "md5" >> /home/vagrant/md5-destroy.log && sleep 0.9; i=$(($i+1)); done
+     echo FINISH $(date +%H:%M:%S) >> /home/vagrant/md5-destroy.log && cat /proc/mdstat  | grep -A1 "md5" >> /home/vagrant/md5-destroy.log 
+
+     parted -s /dev/md0 mklabel gpt
+     parted /dev/md0 mkpart primary xfs 0% 15% && mkfs.xfs /dev/md0p1 1>/dev/null && mount /dev/md0p1 /mnt && mkdir -p /mnt/home /mnt/boot /mnt/var /mnt/mnt
+     parted /dev/md0 mkpart primary fat32 15% 30% && mkfs.vfat -F32 /dev/md0p2 1>/dev/null && mount /dev/md0p2 /mnt/boot
+     parted /dev/md0 mkpart primary ext4 30% 40% && mkfs.ext4 /dev/md0p3 1>/dev/null && mount /dev/md0p3 /mnt/home
+     parted /dev/md0 mkpart primary ext4 40% 60% && mkfs.ext4 /dev/md0p4 1>/dev/null && mount /dev/md0p4 /mnt/var
+     parted /dev/md0 mkpart primary xfs 60% 100% && mkfs.xfs /dev/md0p5 1>/dev/null && mount /dev/md0p5 /mnt/mnt
+     mount | grep md0 | awk '{print $1"  "$3"\t"$5"\tdefaults\t0 0"}' >> /etc/fstab
+
+     echo " "
+     echo "Destroy/Rebuild RAID"
+     echo " "
+     cat /home/vagrant/md5-destroy.log
+     echo " "
+     echo "Create 5 partitions"
+     echo "grep md0 /etc/fstab"
+     echo " "
+     grep md0 /etc/fstab
+     echo " "
+     echo "Bonus. Test RAID0 vs RAID5"
+     echo " "
+     grep IOPS /home/vagrant/md*.log
+   SHELL
+    end
+  end
+end
+
+
+  # Create a forwarded port mapping which allows access to a specific port
+  # within the machine from a port on the host machine. In the example below,
+  # accessing "localhost:8080" will access port 80 on the guest machine.
+  # NOTE: This will enable public access to the opened port
+  # config.vm.network "forwarded_port", guest: 80, host: 8080
+
+  # Create a forwarded port mapping which allows access to a specific port
+  # within the machine from a port on the host machine and only allow access
+  # via 127.0.0.1 to disable public access
+  # config.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
+
+  # Share an additional folder to the guest VM. The first argument is
+  # the path on the host to the actual folder. The second argument is
+  # the path on the guest to mount the folder. And the optional third
+  # argument is a set of non-required options.
+  # config.vm.synced_folder "../data", "/vagrant_data"
