@@ -1,6 +1,7 @@
 # Подключаем второй диск в компьютер. Объявляем его массивом, копируем туда данные. Перезагружаемся, включаем первый диск в массив - данные синхронизируются.
 ```
 [vagrant@lesson-2 ~]$ lsblk 
+
 NAME   MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
 sda      8:0    0  40G  0 disk 
 └─sda1   8:1    0  40G  0 part /
@@ -12,6 +13,7 @@ sdb      8:16   0  40G  0 disk
 ```
 [vagrant@lesson-2 ~]$ sudo su
 [root@lesson-2 vagrant]# fdisk /dev/sdb
+
 Welcome to fdisk (util-linux 2.23.2).
 
 Changes will remain in memory only, until you decide to write them.
@@ -49,6 +51,7 @@ Syncing disks.
 
 ```
 [root@lesson-2 vagrant]# mdadm -C /dev/md1 -l 1 -n 2 missing /dev/sdb1
+
 mdadm: Note: this array has metadata at the start and
     may not be suitable as a boot device.  If you plan to
     store '/boot' on this device please ensure that
@@ -57,10 +60,13 @@ mdadm: Note: this array has metadata at the start and
 Continue creating array? y
 mdadm: Defaulting to version 1.2 metadata
 mdadm: array /dev/md1 started.
+```
 
 # Создаем файловую систему
 
+```
 [root@lesson-2 vagrant]# mkfs.xfs /dev/md1
+
 meta-data=/dev/md1               isize=512    agcount=4, agsize=2619264 blks
          =                       sectsz=512   attr=2, projid32bit=1
          =                       crc=1        finobt=0, sparse=0
@@ -77,6 +83,7 @@ realtime =none                   extsz=4096   blocks=0, rtextents=0
 ```
 [root@lesson-2 vagrant]# mount /dev/md1 /mnt
 [root@lesson-2 vagrant]# xfsdump -J - / | xfsrestore -J - /mnt/
+
 xfsrestore: using file dump (drive_simple) strategy
 xfsdump: using file dump (drive_simple) strategy
 xfsrestore: version 3.1.7 (dump format 3.0)
@@ -124,7 +131,9 @@ xfsrestore: Restore Status: SUCCESS
 # Подключаем служебные файловые системы, chroot в новую систему
 
 ```
-[root@lesson-2 vagrant]# mount --bind /proc /mnt/proc && mount --bind /dev /mnt/dev && mount --bind /sys /mnt/sys && mount --bind /run /mnt/run && chroot /mnt/
+[root@lesson-2 vagrant]# mount --bind /proc /mnt/proc &&\
+>  mount --bind /dev /mnt/dev && mount --bind /sys /mnt/sys &&\
+>  mount --bind /run /mnt/run && chroot /mnt/
 ```
 
 # Записываем конфиг для mdadm
@@ -137,7 +146,9 @@ xfsrestore: Restore Status: SUCCESS
 
 ```
 [root@lesson-2 /]# blkid /dev/md*
+
 /dev/md1: UUID="f811417c-e94d-4aee-a975-a001d0fecb43" TYPE="xfs" 
+
 [root@lesson-2 /]# vim /etc/fstab
 
   #
@@ -154,8 +165,10 @@ xfsrestore: Restore Status: SUCCESS
 #Backup-им initramfs, создаем новую с поддержкой mdadmconf
 
 ```
-[root@lesson-2 /]# mv /boot/initramfs-3.10.0-957.5.1.el7.x86_64.img /boot/initramfs-3.10.0-957.5.1.el7.x86_64.img.back
-[root@lesson-2 /]# dracut --mdadmconf --fstab --add="mdraid" --filesystems "xfs" --add-drivers="raid1" --force /boot/initramfs-$(uname -r).img $(uname -r) -M
+[root@lesson-2 /]# mv /boot/initramfs-3.10.0-957.5.1.el7.x86_64.img \
+> /boot/initramfs-3.10.0-957.5.1.el7.x86_64.img.back
+[root@lesson-2 /]# dracut --mdadmconf --fstab --add="mdraid" --filesystems "xfs"\
+>  --add-drivers="raid1" --force /boot/initramfs-$(uname -r).img $(uname -r) -M
 bash
 nss-softokn
 i18n
@@ -254,7 +267,7 @@ mdadm: added /dev/sda1
 
 watch -n1 "cat /proc/mdstat"
 
-Every 1.0s: cat /proc/mdstat                                                                                                                          Thu Jun  6 19:30:27 2019
+Every 1.0s: cat /proc/mdstat            Thu Jun  6 19:30:27 2019
 
 Personalities : [raid1]
 md1 : active raid1 sda1[2] sdb1[1]
