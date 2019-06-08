@@ -209,6 +209,10 @@ Installation finished. No error reported.
 
 # Выбираем в bios второй диск
 
+![Log image](https://github.com/060P0TEHb/otus-study/raw/master/Lesson2-hard/load_log.jpg)
+
+# Промежуточный итог
+
 ```
 [vagrant@lesson-2 ~]$ lsblk 
 NAME    MAJ:MIN RM SIZE RO TYPE  MOUNTPOINT
