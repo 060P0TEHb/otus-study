@@ -1,0 +1,44 @@
+---
+- name: Install epel-release
+  yum:
+    name: epel-release
+    state: present
+  tags:
+    - package
+    - epel
+
+- name: Install Nginx
+  yum:
+    name: nginx-1.12.2-3.el7.x86_64
+    state: present
+  notify:
+    - Start Nginx
+  tags:
+    - package
+    - nginx
+- name: Copy nginx.conf file
+  template:
+    src: nginx.conf
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify:
+    - Reload Nginx
+  tags:
+    - config
+    - nginx
+    - nginx.conf_config
+- name: Copy root dir and contents
+  synchronize:
+    src: vhosts/
+    dest: /var/www/
+    recursive: yes
+  notify:
+    - Reload Nginx
+    - Reload SE
+  tags:
+    - config
+    - nginx
+    - nginx.root_config
+...

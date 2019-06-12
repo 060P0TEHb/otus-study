@@ -1,0 +1,13 @@
+---
+- name: Start Nginx
+  systemd:
+    name: nginx
+    state: started
+    enabled: yes
+- name: Reload Nginx
+  systemd:
+    name: nginx
+    state: reloaded
+- name: Reload SE
+  command: chcon -Rv --type=httpd_sys_content_t /var/www/
+...

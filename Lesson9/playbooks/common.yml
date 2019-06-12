@@ -1,0 +1,20 @@
+---
+- hosts: web
+  vars:
+    - vhosts:
+      - name: test.local
+        root: /var/www/test.local
+        port: 8080
+        error_page:
+          - name: 404 /404.html
+            location: /40x.html
+          - name: 500 502 503 504 /50x.html
+            location: /50x.html
+      - name: nginx.local
+        root: /var/www/nginx.local
+        port: 80
+  gather_facts: true
+  become: true
+  roles:
+    - otus_nginx
+...
