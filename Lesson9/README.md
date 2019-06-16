@@ -13,8 +13,7 @@
 192.168.10.50 test.local
 192.168.10.50 nginx.local
 ```
-Playbook исп. роль otus_nginx 
-Во время выполнения playbook происходит след:
+Playbook исп. роль otus_nginx. Во время выполнения playbook происходит след:
 - устанавливается epel репозиторий
 - устанавливается nginx 1.12.2-3.el7 версии
 - копируется nginx.conf из template (значения беруться из playbook-а):
