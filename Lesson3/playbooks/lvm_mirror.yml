@@ -1,0 +1,30 @@
+---
+- hosts: lvm
+  gather_facts: true
+  become: true
+  tasks:
+    - name: check size
+      shell: lsblk -b | grep LogVol00 | awk '{if ($4 < 8589934593){print "ok"}}' | grep ok || echo 0
+      register: result
+    - name: check mount
+      shell: mount | grep "/dev/.*on /var" && echo 1 || echo 0
+      args:
+        warn: false
+      register: result1
+    - include_tasks: mirror_tasks/main.yml
+      when: 
+        - result.stdout == "ok"
+        - result1.stdout == "0"
+    - name: show lsblk
+      command: "lsblk"
+      register: command_output
+    - debug: msg="{{ command_output.stdout_lines }}"
+    - name: show mount
+      shell: mount | grep "/dev/.*on /var"
+      args:
+        warn: false
+      register: command_output
+    - debug: msg="{{ command_output.stdout_lines }}"
+    - pause:
+          seconds: 2
+...

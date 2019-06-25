@@ -1,0 +1,85 @@
+---
+    - name: Install xfsdump
+      yum:
+          name: xfsdump-3.1.7-1.el7.x86_64
+          state: present
+      tags: stage1
+    - name: create tmp VG
+      lvg:
+          vg: otus-temp
+          pvs: /dev/sdb
+          pesize: 4M
+          state: present
+      tags: stage1
+    - name: create tmp LV
+      lvol:
+          vg: otus-temp
+          lv: root-temp
+          size: 100%FREE
+          state: present
+      tags: stage1
+    - name: create xfs
+      filesystem:
+          fstype: xfs
+          dev: /dev/otus-temp/root-temp
+      tags: stage1
+    - name: mount tmp fs
+      mount:
+           path: /mnt
+           src: /dev/otus-temp/root-temp
+           fstype: xfs
+           state: mounted
+      tags: stage1
+    - name: make dump
+      shell: xfsdump -J - / | xfsrestore -J - /mnt/
+      tags: stage1
+    - name: backup grub.cfg
+      copy:
+           src: /boot/grub2/grub.cfg
+           dest: /boot/grub2/grub.cfg.back
+           remote_src: yes
+      tags: stage1
+    - name: change root into grub.cfg
+      replace:
+           path: /boot/grub2/grub.cfg
+           regexp: 'root=\/dev\/mapper\/VolGroup00-LogVol00'
+           replace: 'root=/dev/mapper/otus--temp-root--temp'
+      tags: stage1
+    - name: change rd.lvm.lv into grub.cfg
+      replace:
+           path: /boot/grub2/grub.cfg
+           regexp: 'rd.lvm.lv=VolGroup00\/LogVol00'
+           replace: 'rd.lvm.lv=otus-temp/root-temp'
+      tags: stage1
+    - name: change fstab
+      replace:
+           path: /mnt/etc/fstab
+           regexp: '\/dev\/mapper\/VolGroup00-LogVol00'
+           replace: '/dev/mapper/otus--temp-root--temp'
+      tags: stage1
+    - name: delete artifact from fstab
+      lineinfile:
+           path: /mnt/etc/fstab
+           state: absent
+           regexp: '^/dev/otus-temp/root-temp'
+      tags: stage1
+    - name: unmount tmp fs
+      mount:
+           path: /mnt
+           src: /dev/otus-temp/root-temp
+           fstype: xfs
+           state: unmounted
+      tags: stage1
+    - name: reboot
+      reboot:
+      tags: stage1
+    - name: stage 1 final
+      command: "lsblk"
+      register: command_output
+      tags: stage1
+    - debug: msg="{{ command_output.stdout_lines }}"
+      tags: stage1
+    - pause: 
+          seconds: 2
+      tags: stage1
+...

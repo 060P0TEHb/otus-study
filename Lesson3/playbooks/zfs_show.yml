@@ -1,0 +1,11 @@
+---
+- hosts: lvm
+  gather_facts: true
+  become: true
+  tasks:
+    - name: check disks
+      shell: lsblk  | grep "sd[d,e,f]" | awk '{print $4}' | sort | uniq | wc -l || echo 0 
+      register: result
+    - include_tasks: zfs/main.yml
+      when: result.stdout == "1"
+...

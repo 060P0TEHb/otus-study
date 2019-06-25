@@ -1,0 +1,30 @@
+---
+    - name: delete old tmp LV
+      lvol:
+          vg: otus-temp
+          lv: root-temp
+          state: absent
+          force: yes
+      tags: stage3
+    - name: delete tmp VG
+      lvg:
+          vg: otus-temp
+          pvs: /dev/sdb
+          pesize: 4M
+          state: absent
+      tags: stage3
+    - name: delete old tmp pv
+      command: "pvremove /dev/sdb"
+      tags: stage3
+    - name: stage 3 final
+      command: "lsblk"
+      register: command_output
+      tags: stage3
+    - debug: msg="{{ command_output.stdout_lines }}"
+      tags: stage3
+    - command: "pvs"
+      register: command_output
+      tags: stage3
+    - debug: msg="{{ command_output.stdout_lines }}"
+      tags: stage3
+...

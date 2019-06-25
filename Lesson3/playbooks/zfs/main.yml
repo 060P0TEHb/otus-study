@@ -1,0 +1,83 @@
+---
+    - name: install zfs repos
+      yum:
+        name: http://download.zfsonlinux.org/epel/zfs-release.el7_5.noarch.rpm
+        state: present
+    - name: enable zfs-kmod repos
+      ini_file:
+        path: /etc/yum.repos.d/zfs.repo
+        section: zfs-kmod
+        option: enabled
+        value: "1"
+    - name: install zfs
+      yum:
+        name: zfs-0.7.12-1.el7_5.x86_64
+        state: present
+    - name: modprobe zfs
+      modprobe:
+        name: zfs
+        state: present
+    - name: create test fs
+      shell: zpool create TestFS mirror /dev/sdd /dev/sde -m /opt 
+    - name: proof mount
+      shell: mount | grep opt
+      args:
+        warn: false
+      register: mount_out
+    - debug: msg="{{ mount_out.stdout_lines }}"
+    - name: create some files into /opt
+      shell: for i in {1..10}; do dd if=/dev/zero of=/opt/file=$i bs=$(echo $i)M count=$(echo $i); done 
+    - name: add disk for replace
+      shell: zpool replace TestFS /dev/sdd /dev/sdf
+    - name: sync data (wait)
+      pause: 
+          seconds: 20
+    - name: proof replace
+      shell: zpool status
+      register: replace_out
+    - debug: msg="{{ replace_out.stdout_lines }}"
+    - name: clear bad disk (/dev/sdd)
+      shell: wipefs --all /dev/sdd
+    - name: proof 
+      shell: ls -lh /opt/
+      register: out
+    - debug: msg="{{ out.stdout_lines }}"
+    - name: make snap
+      shell: zfs snapshot TestFS@now
+    - name: proof snapshot
+      shell: zfs list -t snapshot
+      register: out
+    - debug: msg="{{ out.stdout_lines }}"
+    - name: rm -rf /opt
+      shell: rm -rf /opt/*
+      args:
+        warn: false
+    - name: proof 
+      shell: ls -lh /opt/
+      register: out
+    - debug: msg="{{ out.stdout_lines }}"
+    - name: rollback snap
+      shell: zfs rollback TestFS@now
+    - name: proof 
+      shell: ls -lh /opt/
+      register: out
+    - debug: msg="{{ out.stdout_lines }}"
+    - name: create new pool
+      shell: zpool create TestFS2 -m /opt2 /dev/sdd
+    - name: send snap to new pool
+      shell: zfs send TestFS@now | zfs recv TestFS2 -F
+    - name: destroy snap
+      shell: zfs destroy TestFS@now;zfs destroy TestFS2@now
+    - name: proof 
+      shell: ls -lh /opt2/
+      register: out
+    - debug: msg="{{ out.stdout_lines }}"
+    - name: destroy snap
+      shell: zpool destroy TestFS;wipefs --all /dev/sd{e,f}
+    - name: proof 
+      shell: lsblk
+      register: out
+    - debug: msg="{{ out.stdout_lines }}"
+    - name: destroy fs
+      shell: zpool destroy TestFS2;wipefs --all /dev/sdd
+...

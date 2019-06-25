@@ -1,0 +1,77 @@
+---
+    - name: add sdb and sdc to VG VolGroup00
+      lvg:
+        vg: VolGroup00
+        pesize: 4M
+        pvs: /dev/sdb,/dev/sda3,/dev/sdc
+        state: present
+      tags: snapshot
+    - name: Create LV for /home
+      lvol:
+        vg: VolGroup00
+        lv: home-snap
+        size: 5G
+    - name: create xfs
+      filesystem:
+        fstype: xfs
+        dev: /dev/VolGroup00/home-snap
+    - name: mount tmp fs
+      mount:
+        path: /mnt/
+        src: /dev/VolGroup00/home-snap
+        fstype: xfs
+        state: mounted
+    - name: sync old home and new home
+      synchronize:
+        src: /home/
+        dest: /mnt/
+        archive: yes
+        rsync_opts:
+            - "--xattrs"
+            - "--acls"
+      delegate_to: "{{ inventory_hostname }}"
+    - name: umount tmp fs
+      mount:
+        path: /mnt/
+        src: /dev/VolGroup00/home-snap
+        fstype: xfs
+        state: unmounted
+    - name: replace /mnt to /home into fstab
+      replace:
+        path: /etc/fstab
+        regexp: '/mnt/'
+        replace: '/home/'
+    - name: mount home fs
+      mount:
+        path: /home/
+        src: /dev/VolGroup00/home-snap
+        fstype: xfs
+        state: mounted
+    - name: mount old home
+      mount:
+        path: /mnt/tmp
+        src: /
+        fstype: xfs
+        opts: bind
+        state: mounted
+    - name: get all files from /mnt/tmp/home
+      find:
+        path: /mnt/tmp/home/
+        hidden: true
+        file_type: any
+      changed_when: false
+      register: any_files
+    - name: clear old home
+      file:
+         state: absent
+         path: "{{ item.path }}"
+      with_items: "{{ any_files.files }}"
+      when: any_files.matched|int != 0
+    - name: umount old home
+      mount:
+        path: /mnt/tmp
+        src: /
+        fstype: xfs
+        opts: bind
+        state: absent
+...

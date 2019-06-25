@@ -1,0 +1,27 @@
+---
+- hosts: lvm
+  gather_facts: true
+  become: true
+  remote_user: root
+  tasks:
+    - name: check size
+      shell: lsblk -b | grep LogVol00 | awk '{if ($4 < 8589934593){print "ok"}}' | grep ok || echo 0
+      register: result
+    - name: check mount
+      shell: mount | grep "/dev/.*on /home" 1>/dev/null && echo 1 || echo 0
+      args:
+        warn: false
+      register: result1
+      when: result.stdout == "ok"
+    - include_tasks: snapshot_tasks/main.yml
+      when:
+        - result.stdout == "ok"
+        - result1.stdout == "0"
+    - name: check mount
+      shell: mount | grep "/dev/.*on /home" 1>/dev/null && echo 1 || echo 0
+      args:
+        warn: false
+      register: result1
+    - include_tasks: snapshot_tasks/snapshot.yml
+      when: result1.stdout == "1"
+...

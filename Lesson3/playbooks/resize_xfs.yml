@@ -1,0 +1,45 @@
+---
+- hosts: lvm
+  gather_facts: true
+  become: true
+  tasks:
+    - name: show lsblk
+      command: "lsblk"
+      register: command_output
+      tags: 
+          - stage1
+          - stage2
+          - stage3
+    - debug: msg="{{ command_output.stdout_lines }}"
+      tags: 
+          - stage1
+          - stage2
+          - stage3
+    - pause: 
+          seconds: 2
+      tags: 
+          - stage1
+          - stage2
+          - stage3
+    - name: check sdb 
+      shell: pvs|grep sdb | wc -l
+      register: result1
+      tags: stage1
+    - include_tasks: resize_tasks/task_resize_xfs_backup.yml 
+      when: result1.stdout == "0"
+      tags: stage1
+    - name: check LogVol00
+      shell: lvs | grep LogVol00 1>/dev/null && mount | grep LogVol00 | wc -l || echo "1"
+      register: result2
+      tags: stage2
+    - include_tasks: resize_tasks/task_resize_xfs_restore.yml 
+      tags: stage2
+      when: result2.stdout == "0"
+    - name: check sdb for clear 
+      shell: lvs | grep root-temp 1>/dev/null && mount | grep root--temp | wc -l || echo 1
+      register: result3
+      tags: stage3
+    - include_tasks: resize_tasks/task_resize_xfs_clear.yml 
+      when: result3.stdout == "0"
+      tags: stage3
+...

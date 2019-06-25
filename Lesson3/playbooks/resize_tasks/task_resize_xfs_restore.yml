@@ -1,0 +1,73 @@
+---
+    - name: delete old LV
+      lvol:
+          vg: VolGroup00
+          lv: LogVol00
+          state: absent
+          force: yes
+      tags: stage2
+    - name: create new main LV
+      lvol:
+          vg: VolGroup00
+          lv: LogVol00
+          size: 8G
+          state: present
+      tags: stage2
+    - name: create xfs
+      filesystem:
+          fstype: xfs
+          dev: /dev/VolGroup00/LogVol00
+      tags: stage2
+    - name: mount main fs
+      mount:
+           path: /mnt
+           src: /dev/VolGroup00/LogVol00
+           fstype: xfs
+           state: mounted
+      tags: stage2
+    - name: make dump
+      shell: xfsdump -J - / | xfsrestore -J - /mnt/
+      tags: stage2
+    - name: restore grub.cfg
+      copy:
+           src: /boot/grub2/grub.cfg.back
+           dest: /boot/grub2/grub.cfg
+           remote_src: yes
+      tags: stage2
+    - name: delete old file
+      file:
+           path: /boot/grub2/grub.cfg.back
+           state: absent
+      tags: stage2
+    - name: change fstab
+      replace:
+           path: /mnt/etc/fstab
+           regexp: '\/dev\/mapper\/otus--temp-root--temp'
+           replace: '/dev/mapper/VolGroup00-LogVol00'
+      tags: stage2
+    - name: delete artifact from fstab
+      lineinfile:
+           path: /mnt/etc/fstab
+           state: absent
+           regexp: '^/dev/VolGroup00/LogVol00'
+      tags: stage2
+    - name: unmount tmp fs
+      mount:
+           path: /mnt
+           src: /dev/VolGroup00/LogVol00
+           fstype: xfs
+           state: unmounted
+      tags: stage2
+    - name: reboot
+      reboot:
+      tags: stage2
+    - name: stage 2 final
+      command: "lsblk"
+      register: command_output
+      tags: stage2
+    - debug: msg="{{ command_output.stdout_lines }}"
+      tags: stage2
+    - pause: 
+          seconds: 2
+      tags: stage2
+...

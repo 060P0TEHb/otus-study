@@ -1,0 +1,77 @@
+---
+    - name: Install bc
+      yum:
+          name: bc-1.06.95-13.el7.x86_64
+          state: present
+    - name: create some files into /home/vagrant
+      shell: for i in {1..10}; do dd if=/dev/zero of=/home/vagrant/file_$i bs=$(echo $i)M count=$(echo $i); done 
+    - name: ls /home/vagrant
+      shell: find /home/ -name "file*" | awk '{print "ls -lh "$1}' | bash
+      register: home_files
+    - debug: msg="{{ home_files.stdout_lines }}"
+    - pause: 
+          seconds: 3
+    - name: Create snapshot /home
+      lvol:
+        vg: VolGroup00
+        lv: home-snap
+        snapshot: snap1
+        size: 1.5G
+    - name: get all files from /home/vagrant/
+      find:
+        path: /home/vagrant/
+        hidden: false
+        file_type: any
+      changed_when: false
+      register: any_files
+    - name: clear home
+      file:
+         state: absent
+         path: "{{ item.path }}"
+      no_log: True
+      with_items: "{{ any_files.files }}"
+      when: any_files.matched|int != 0
+    - name: create some files into /home/vagrant
+      shell: for i in {1..10}; do dd if=/dev/zero of=/home/vagrant/NEW_FILE_$(echo $i*3|bc) bs=$(echo $i)M count=$(echo $i*2|bc); done 
+    - name: ls /home/vagrant
+      shell: find /home/ -name "*_FILE_*" | awk '{print "ls -lh "$1}' | bash
+      register: home_files
+    - debug: msg="{{ home_files.stdout_lines }}"
+    - pause: 
+          seconds: 3
+    - name: merge snapshot
+      shell: lvconvert --merge /dev/VolGroup00/snap1
+    - name: umount home
+      mount:
+        path: /home/
+        src: /dev/VolGroup00/home-snap
+        fstype: xfs
+        state: unmounted
+    - name: disable LV
+      lvol:
+        vg: VolGroup00
+        lv: home-snap
+        active: no
+    - name: enable LV
+      lvol:
+        vg: VolGroup00
+        lv: home-snap
+        active: yes
+    - name: umount home
+      mount:
+        path: /home/
+        src: /dev/VolGroup00/home-snap
+        fstype: xfs
+        state: mounted
+    - name: wait until snapshots merge and delete from lsblk
+      pause: 
+          seconds: 15
+    - name: ls /home/vagrant
+      shell: find /home/ -name "file*" | awk '{print "ls -lh "$1}' | bash
+      register: home_files
+    - debug: msg="{{ home_files.stdout_lines }}"
+    - name: show clear lsblk 
+      command: "lsblk"
+      register: command_output
+    - debug: msg="{{ command_output.stdout_lines }}"
+...

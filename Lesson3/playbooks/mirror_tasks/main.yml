@@ -1,0 +1,74 @@
+---
+    - name: add sdb to VG VolGroup00
+      lvg:
+        vg: VolGroup00
+        pesize: 4M
+        pvs: /dev/sdb,/dev/sda3
+        state: present
+    - name: Create mirror LV
+      lvol:
+        vg: VolGroup00
+        lv: var-raid
+        size: 5G
+        opts: -m 1
+    - name: create xfs
+      filesystem:
+        fstype: xfs
+        dev: /dev/VolGroup00/var-raid
+    - name: mount tmp fs
+      mount:
+        path: /mnt/
+        src: /dev/VolGroup00/var-raid
+        fstype: xfs
+        state: mounted
+    - name: sync old var and new var
+      synchronize:
+        src: /var/
+        dest: /mnt/
+        archive: yes
+        rsync_opts:
+            - "--xattrs"
+            - "--acls"
+      delegate_to: "{{ inventory_hostname }}"
+    - name: umount tmp fs
+      mount:
+        path: /mnt/
+        src: /dev/VolGroup00/var-raid
+        fstype: xfs
+        state: unmounted
+    - name: replace /mnt to /var into fstab
+      replace:
+        path: /etc/fstab
+        regexp: '/mnt/'
+        replace: '/var/'
+    - name: reboot
+      reboot:
+    - name: mount old var
+      mount:
+        path: /mnt/tmp
+        src: /
+        fstype: xfs
+        opts: bind
+        state: mounted
+    - name: get all files from /mnt/tmp/var
+      find:
+        path: /mnt/tmp/var/
+        hidden: true
+        file_type: any
+      changed_when: false
+      register: any_files
+    - name: clear old var
+      file:
+         state: absent
+         path: "{{ item.path }}"
+      with_items: "{{ any_files.files }}"
+      no_log: True
+      when: any_files.matched|int != 0
+    - name: umount old var
+      mount:
+        path: /mnt/tmp
+        src: /
+        fstype: xfs
+        opts: bind
+        state: absent
+...
