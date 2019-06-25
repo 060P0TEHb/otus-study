@@ -20,7 +20,7 @@
       register: command_output
     - debug: msg="{{ command_output.stdout_lines }}"
     - name: show mount
-      shell: mount | grep "/dev/.*on /var"
+      shell: mount | grep "/dev/.*on /var" || echo "not mount"
       args:
         warn: false
       register: command_output
