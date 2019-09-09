@@ -1,0 +1,143 @@
+---
+- hosts: 127.0.0.1
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Install epel-release 
+      yum:
+          name:
+            - epel-release
+          state: present
+    - name: Install packages
+      yum:
+          name:
+            - epel-release
+            - rpmdevtools-8.3
+            - rpm-build-4.11.3
+            - git-1.8.3.1
+            - "@Development tools"
+            - cmake3-3.13.5
+            - gtest-devel-1.6.0
+            - systemd-devel-219
+            - zlib-devel-1.2.7
+            - nginx-1.12.2
+            - createrepo-0.9.9
+            - python2-pip-8.1.2
+          state: present
+    - name: Install docker-py from pip 
+      pip:
+          name: docker-py
+    - name: Create rpm build folders
+      shell: rpmdev-setuptree
+    - name: Copy spec file
+      synchronize:
+          src: /vagrant/fluent-bit.spec
+          dest: "{{ lookup('env','HOME') }}/rpmbuild/SPECS/fluent-bit.spec"
+    - name: run build 
+      shell: "rpmbuild -ba {{ lookup('env','HOME') }}/rpmbuild/SPECS/fluent-bit.spec"
+    - name: make repo dir
+      file:
+          path: /repo/centos/7
+          state: directory
+          owner: nginx
+          group: nginx
+    - name: copy main packages
+      synchronize:
+          src: "{{ lookup('env','HOME') }}/rpmbuild/RPMS/x86_64/fluent-bit-1.2.2-1.el7.x86_64.rpm"
+          dest: /repo/centos/7/
+    - name: copy source packages
+      synchronize:
+          src: "{{ lookup('env','HOME') }}/rpmbuild/SRPMS/fluent-bit-1.2.2-1.el7.src.rpm"
+          dest: /repo/centos/7/
+    - name: create repo
+      shell: "createrepo /repo/centos/7/"
+    - name: Nginx config (change root)
+      replace:
+          path: /etc/nginx/nginx.conf
+          regexp: '^\s*root\s*/usr/share/nginx/html;$'
+          replace: '        root /repo/centos/7/;'
+    - name: Nginx config (autoindex on)
+      replace:
+          path: /etc/nginx/nginx.conf
+          regexp: '^\s*location / {'
+          replace: '        location /  {\n            autoindex on;'
+    - name: Add custom repo
+      yum_repository:
+        name: localhost-repo
+        description: localhost-repo
+        file: custom
+        baseurl: file:///repo/centos/7/
+        gpgcheck: no
+        enabled: yes
+    - name: restart nginx
+      systemd:
+          state: restarted
+          name: nginx
+          enabled: yes
+    - name: SELinux conf
+      shell: "chcon -Rv --type=httpd_sys_content_t /repo/centos/7/"
+    - name: Add Docker repo
+      yum_repository:
+        name: docker-ce-stable
+        description: Docker CE Stable - $basearch
+        file: docker-ce
+        baseurl: https://download.docker.com/linux/centos/7/$basearch/stable
+        gpgkey: https://download.docker.com/linux/centos/gpg
+        gpgcheck: yes
+        enabled: yes
+    - name: Install Docker
+      yum:
+          name:
+            - docker-ce-19.03.2
+            - containerd.io-1.2.6
+            - docker-ce-cli-19.03.2
+          state: present
+    - name: start docker
+      systemd:
+          state: started
+          name: docker
+          enabled: yes
+    - name: make Docker-build dir
+      file:
+          path: /Docker-Build
+          state: directory
+    - name: copy fluent-bit.rpm
+      synchronize:
+          src: "{{ lookup('env','HOME') }}/rpmbuild/RPMS/x86_64/fluent-bit-1.2.2-1.el7.x86_64.rpm"
+          dest: /Docker-Build
+    - name: copy Dockerfile
+      synchronize:
+          src: /vagrant/Dockerfile
+          dest: /Docker-Build
+    - name: make docker registry dir
+      file:
+          path: /srv/registry/data/
+          state: directory
+    - name: docker run local registry
+      docker_container:
+          name: registry
+          image: registry:2
+          volumes:
+            - /srv/registry/data:/var/lib/registry
+          ports:
+           - "5000:5000"
+          restart_policy: always
+          detach: yes
+    - name: docker build and push
+      docker_image:
+          path: /Docker-Build/
+          name: localhost:5000/fluent-bit
+          tag: latest
+          push: yes
+          state: build
+    - name: Remove fluent-bit image
+      docker_image:
+          state: absent
+          name: localhost:5000/fluent-bit
+          tag: latest
+    - name: Remove centos image
+      docker_image:
+          state: absent
+          name: centos
+          tag: 7
+...
